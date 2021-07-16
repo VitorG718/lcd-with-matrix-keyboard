@@ -35,6 +35,15 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
+#define INSTRUCTION 			0
+#define DATA 							1
+#define WRITE_MODE 				GPIO_PIN_RESET
+#define READ_MODE 				GPIO_PIN_SET
+#define RESET 						GPIO_PIN_RESET
+#define SET 							GPIO_PIN_SET
+#define VIAS_4						0
+#define VIAS_8						1
+
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -51,7 +60,11 @@
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 /* USER CODE BEGIN PFP */
-
+void lcdInitialization(uint8_t);
+void lcdSender(uint8_t, uint8_t, uint8_t);
+void lcdWriteMessage(char *, uint8_t);
+void breakLine(uint8_t);
+void cleanScreen(uint8_t);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -89,7 +102,8 @@ int main(void)
   MX_GPIO_Init();
   MX_USART2_UART_Init();
   /* USER CODE BEGIN 2 */
-
+	lcdInitialization(VIAS_8);
+	lcdWriteMessage("ODRI Candalarrai", VIAS_8);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -151,7 +165,72 @@ void SystemClock_Config(void)
 }
 
 /* USER CODE BEGIN 4 */
+void lcdInitialization(uint8_t vias) {
+	HAL_Delay(15);
+	lcdSender(0x30, INSTRUCTION, vias);
+	HAL_Delay(5);
+	lcdSender(0x30, INSTRUCTION, vias);
+	lcdSender(0x30, INSTRUCTION, vias);
+	lcdSender(0x38, INSTRUCTION, vias);
+	lcdSender(0x0F, INSTRUCTION, vias);
+	lcdSender(0x06, INSTRUCTION, vias);
+	HAL_Delay(2);
+	lcdSender(0x01, INSTRUCTION, vias);
+	HAL_Delay(2);
+	
+}
 
+void lcdSender(uint8_t data, uint8_t mode, uint8_t vias) {
+	HAL_GPIO_WritePin(LCD_RS_GPIO_Port, LCD_RS_Pin, (mode == DATA ? SET:RESET));
+	HAL_GPIO_WritePin(LCD_RW_GPIO_Port, LCD_RW_Pin, WRITE_MODE);
+	
+	switch(vias) {
+		case VIAS_8:
+			HAL_GPIO_WritePin(LCD_DB0_GPIO_Port, LCD_DB0_Pin, ((data & 0x01) == 0x01 ? SET:RESET));
+			HAL_GPIO_WritePin(LCD_DB1_GPIO_Port, LCD_DB1_Pin, ((data & 0x02) == 0x02 ? SET:RESET));
+			HAL_GPIO_WritePin(LCD_DB2_GPIO_Port, LCD_DB2_Pin, ((data & 0x04) == 0x04 ? SET:RESET));
+			HAL_GPIO_WritePin(LCD_DB3_GPIO_Port, LCD_DB3_Pin, ((data & 0x08) == 0x08 ? SET:RESET));
+		case VIAS_4:
+			HAL_GPIO_WritePin(LCD_DB4_GPIO_Port, LCD_DB4_Pin, ((data & 0x10) == 0x10 ? SET:RESET));
+			HAL_GPIO_WritePin(LCD_DB5_GPIO_Port, LCD_DB5_Pin, ((data & 0x20) == 0x20 ? SET:RESET));
+			HAL_GPIO_WritePin(LCD_DB6_GPIO_Port, LCD_DB6_Pin, ((data & 0x40) == 0x40 ? SET:RESET));
+			HAL_GPIO_WritePin(LCD_DB7_GPIO_Port, LCD_DB7_Pin, ((data & 0x80) == 0x80 ? SET:RESET));
+	}
+	
+	HAL_GPIO_WritePin(LCD_E_GPIO_Port, LCD_E_Pin, RESET);
+	HAL_Delay(1);
+	HAL_GPIO_WritePin(LCD_E_GPIO_Port, LCD_E_Pin, SET);
+	HAL_Delay(1);
+	HAL_GPIO_WritePin(LCD_E_GPIO_Port, LCD_E_Pin, RESET);
+	
+}
+
+void lcdWriteMessage(char *msg, uint8_t vias) {
+	uint8_t counter = 0;
+	do {
+		switch(counter) {
+			case 16:
+				breakLine(vias);
+				break;
+			case 32:
+				cleanScreen(vias);
+				break;
+			default:
+				counter++;
+		}
+		if (*msg != '\0') {
+			lcdSender(*msg, DATA, vias);
+		}
+	} while(*msg++);
+}
+
+void breakLine(uint8_t vias) {
+	lcdSender(0x01, INSTRUCTION, vias);
+}
+
+void cleanScreen(uint8_t vias) {
+	lcdSender(0x01, INSTRUCTION, vias);
+}
 /* USER CODE END 4 */
 
 /**
