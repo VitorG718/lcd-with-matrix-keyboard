@@ -30,7 +30,10 @@
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
-
+typedef struct {
+	char character;
+	uint8_t pressed;
+} Button;
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
@@ -54,7 +57,13 @@
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
-
+Button kb_keys[4][4] = {
+	{{'1',0},{'2',0},{'3',0},{'\0',0}},
+	{{'4',0},{'5',0},{'6',0},{'\0',0}},
+	{{'7',0},{'8',0},{'9',0},{'\0',0}},
+	{{'*',0},{'0',0},{'#',0},{'\0',0}}
+};
+uint8_t newLine = 0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -63,8 +72,12 @@ void SystemClock_Config(void);
 void lcdInitialization(uint8_t);
 void lcdSender(uint8_t, uint8_t, uint8_t);
 void lcdWriteMessage(char *, uint8_t);
+void lcdWriteCharacter(char, uint8_t);
 void breakLine(uint8_t);
 void cleanScreen(uint8_t);
+void enableKBCol(uint8_t);
+uint8_t selectedRow(uint8_t);
+	
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -103,7 +116,10 @@ int main(void)
   MX_USART2_UART_Init();
   /* USER CODE BEGIN 2 */
 	lcdInitialization(VIAS_8);
-	lcdWriteMessage("ODRI Candalarrai", VIAS_8);
+	lcdWriteMessage("Let's make       ", VIAS_8);
+	lcdWriteMessage("a call           ", VIAS_8);
+	uint8_t col = 0;
+	uint8_t row;
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -113,6 +129,83 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
+		
+		switch(col) {
+			case 0:
+				enableKBCol(col);
+				row = selectedRow(col);
+				if (row != 0xff && kb_keys[row][col].character != '\0') {
+					switch(kb_keys[row][col].character) {
+						case '*':
+							cleanScreen(VIAS_8);
+							break;
+						case '#':
+							breakLine(VIAS_8);
+							lcdWriteMessage("Calling....", VIAS_8);
+							break;
+						default:
+							lcdWriteCharacter(kb_keys[row][col].character, VIAS_8);
+					}
+				}
+				col = 1;
+				break;
+			case 1:
+				enableKBCol(col);
+				row = selectedRow(col);
+				if (row != 0xff && kb_keys[row][col].character != '\0') {
+					switch(kb_keys[row][col].character) {
+						case '*':
+							cleanScreen(VIAS_8);
+							break;
+						case '#':
+							breakLine(VIAS_8);
+							lcdWriteMessage("Calling....", VIAS_8);
+							break;
+						default:
+							lcdWriteCharacter(kb_keys[row][col].character, VIAS_8);
+					}
+				}
+				col = 2;
+				break;
+			case 2:
+				enableKBCol(col);
+				row = selectedRow(col);
+				if (row != 0xff && kb_keys[row][col].character != '\0') {
+					switch(kb_keys[row][col].character) {
+						case '*':
+							cleanScreen(VIAS_8);
+							break;
+						case '#':
+							breakLine(VIAS_8);
+							lcdWriteMessage("Calling....", VIAS_8);
+							break;
+						default:
+							lcdWriteCharacter(kb_keys[row][col].character, VIAS_8);
+					}
+					
+				}
+				col = 3;
+				break;
+			case 3:
+				enableKBCol(col);
+				row = selectedRow(col);
+				if (row != 0xff&& kb_keys[row][col].character != '\0') {
+					switch(kb_keys[row][col].character) {
+						case '*':
+							cleanScreen(VIAS_8);
+							break;
+						case '#':
+							breakLine(VIAS_8);
+							lcdWriteMessage("Calling....", VIAS_8);
+							break;
+						default:
+							lcdWriteCharacter(kb_keys[row][col].character, VIAS_8);
+					}
+				}
+				col = 0;
+				break;
+		}
+		
   }
   /* USER CODE END 3 */
 }
@@ -177,6 +270,8 @@ void lcdInitialization(uint8_t vias) {
 	HAL_Delay(2);
 	lcdSender(0x01, INSTRUCTION, vias);
 	HAL_Delay(2);
+	lcdSender(0x0C, INSTRUCTION, vias);
+	HAL_Delay(2);
 	
 }
 
@@ -206,9 +301,9 @@ void lcdSender(uint8_t data, uint8_t mode, uint8_t vias) {
 }
 
 void lcdWriteMessage(char *msg, uint8_t vias) {
-	uint8_t counter = 0;
+	uint8_t msgCounter = 0;
 	do {
-		switch(counter) {
+		switch(msgCounter) {
 			case 16:
 				breakLine(vias);
 				break;
@@ -216,7 +311,7 @@ void lcdWriteMessage(char *msg, uint8_t vias) {
 				cleanScreen(vias);
 				break;
 			default:
-				counter++;
+				msgCounter++;
 		}
 		if (*msg != '\0') {
 			lcdSender(*msg, DATA, vias);
@@ -224,13 +319,64 @@ void lcdWriteMessage(char *msg, uint8_t vias) {
 	} while(*msg++);
 }
 
+void lcdWriteCharacter(char data, uint8_t vias) {
+	lcdSender(data, DATA, vias);
+}
+
 void breakLine(uint8_t vias) {
-	lcdSender(0x01, INSTRUCTION, vias);
+	lcdSender(0xC0, INSTRUCTION, vias);
 }
 
 void cleanScreen(uint8_t vias) {
 	lcdSender(0x01, INSTRUCTION, vias);
 }
+
+
+void enableKBCol(uint8_t col) {
+	HAL_GPIO_WritePin(KB_COL1_GPIO_Port, KB_COL1_Pin, (col == 0 ? GPIO_PIN_SET:GPIO_PIN_RESET));
+	HAL_GPIO_WritePin(KB_COL2_GPIO_Port, KB_COL2_Pin, (col == 1 ? GPIO_PIN_SET:GPIO_PIN_RESET));
+	HAL_GPIO_WritePin(KB_COL3_GPIO_Port, KB_COL3_Pin, (col == 2 ? GPIO_PIN_SET:GPIO_PIN_RESET));
+	HAL_GPIO_WritePin(KB_COL4_GPIO_Port, KB_COL4_Pin, (col == 3 ? GPIO_PIN_SET:GPIO_PIN_RESET));
+}
+
+uint8_t selectedRow(uint8_t col) {
+	uint8_t row = 0xff;
+	if(HAL_GPIO_ReadPin(KB_ROW1_GPIO_Port, KB_ROW1_Pin) && kb_keys[0][col].pressed == 0) {
+		HAL_Delay(100);
+		if(HAL_GPIO_ReadPin(KB_ROW1_GPIO_Port, KB_ROW1_Pin)) {
+			row = 0;
+			kb_keys[row][col].pressed = 1;
+		}
+	} else if(HAL_GPIO_ReadPin(KB_ROW2_GPIO_Port, KB_ROW2_Pin) && kb_keys[1][col].pressed == 0) {
+		HAL_Delay(100);
+		if(HAL_GPIO_ReadPin(KB_ROW2_GPIO_Port, KB_ROW2_Pin)) {
+			row = 1;
+			kb_keys[row][col].pressed = 1;
+		}
+	} else if(HAL_GPIO_ReadPin(KB_ROW3_GPIO_Port, KB_ROW3_Pin) && kb_keys[2][col].pressed == 0) {
+		HAL_Delay(100);
+		if(HAL_GPIO_ReadPin(KB_ROW3_GPIO_Port, KB_ROW3_Pin)) {
+			row = 2;
+			kb_keys[row][col].pressed = 1;
+		}
+	} else if(HAL_GPIO_ReadPin(KB_ROW4_GPIO_Port, KB_ROW4_Pin) && kb_keys[3][col].pressed == 0) {
+		HAL_Delay(100);
+		if(HAL_GPIO_ReadPin(KB_ROW4_GPIO_Port, KB_ROW4_Pin)) {
+			row = 3;
+			kb_keys[row][col].pressed = 1;
+		}
+	}
+	
+	if(row == 0xff) {
+		kb_keys[0][col].pressed = 0;
+		kb_keys[1][col].pressed = 0;
+		kb_keys[2][col].pressed = 0;
+		kb_keys[3][col].pressed = 0;
+	}
+	
+	return row;
+}
+	
 /* USER CODE END 4 */
 
 /**
