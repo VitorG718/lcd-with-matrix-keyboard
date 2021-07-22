@@ -32,8 +32,9 @@
 /* USER CODE BEGIN PTD */
 typedef struct {
 	char character;
-	uint8_t pressed;
+	uint8_t number;
 } Button;
+uint8_t msgCounter = 0;
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
@@ -46,6 +47,7 @@ typedef struct {
 #define SET 							GPIO_PIN_SET
 #define VIAS_4						0
 #define VIAS_8						1
+#define VIAS_DEFAULT      VIAS_8
 
 /* USER CODE END PD */
 
@@ -58,26 +60,34 @@ typedef struct {
 
 /* USER CODE BEGIN PV */
 Button kb_keys[4][4] = {
-	{{'1',0},{'2',0},{'3',0},{'\0',0}},
-	{{'4',0},{'5',0},{'6',0},{'\0',0}},
-	{{'7',0},{'8',0},{'9',0},{'\0',0}},
-	{{'*',0},{'0',0},{'#',0},{'\0',0}}
+	{{'1',1},{'2',2},{'3',3},{0x01,0xff}},
+	{{'4',4},{'5',5},{'6',6},{0x00,0xff}},
+	{{'7',7},{'8',8},{'9',9},{0x00,0xff}},
+	{{'*',0xff},{'0',0},{'#',0xff},{0x00,0xff}}
 };
-uint8_t newLine = 0;
+uint8_t character = '\0';
+uint8_t shipCharacter [7] = {0x00, 0x0a, 0x1f, 0x1f, 0x0e, 0x04, 0x00};	
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 /* USER CODE BEGIN PFP */
 void lcdInitialization(uint8_t);
-void lcdSender(uint8_t, uint8_t, uint8_t);
+void lcdSender(uint8_t, uint8_t, uint8_t, uint8_t);
 void lcdWriteMessage(char *, uint8_t);
 void lcdWriteCharacter(char, uint8_t);
+void lcdWriteFormatedNumber(char, uint8_t);
 void breakLine(uint8_t);
 void cleanScreen(uint8_t);
 void enableKBCol(uint8_t);
 uint8_t selectedRow(uint8_t);
-	
+void lcdCreateCharacter(uint8_t *, uint8_t);
+void turnOutputVias(void);
+void turnInputVias(void);
+char lcdReader(uint8_t);
+void moveCursorTo(uint8_t, uint8_t, uint8_t);
+Button number(void);
+
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -115,11 +125,18 @@ int main(void)
   MX_GPIO_Init();
   MX_USART2_UART_Init();
   /* USER CODE BEGIN 2 */
-	lcdInitialization(VIAS_8);
-	lcdWriteMessage("Let's make       ", VIAS_8);
-	lcdWriteMessage("a call           ", VIAS_8);
+	lcdInitialization(VIAS_DEFAULT);
+	lcdCreateCharacter(shipCharacter, VIAS_DEFAULT);
+	cleanScreen(VIAS_DEFAULT);
+	lcdWriteMessage("Let's make", VIAS_DEFAULT);
+	breakLine(VIAS_DEFAULT);
+	lcdWriteMessage("a call", VIAS_DEFAULT);
+	HAL_Delay(3000);
+	cleanScreen(VIAS_DEFAULT);
 	uint8_t col = 0;
 	uint8_t row;
+	char dataReceived = 0x01;
+	Button cursorCol;
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -134,76 +151,67 @@ int main(void)
 			case 0:
 				enableKBCol(col);
 				row = selectedRow(col);
-				if (row != 0xff && kb_keys[row][col].character != '\0') {
-					switch(kb_keys[row][col].character) {
-						case '*':
-							cleanScreen(VIAS_8);
-							break;
-						case '#':
-							breakLine(VIAS_8);
-							lcdWriteMessage("Calling....", VIAS_8);
-							break;
-						default:
-							lcdWriteCharacter(kb_keys[row][col].character, VIAS_8);
-					}
-				}
+				character = (row != 0xff ? kb_keys[row][col].character:'\0');
 				col = 1;
 				break;
 			case 1:
 				enableKBCol(col);
 				row = selectedRow(col);
-				if (row != 0xff && kb_keys[row][col].character != '\0') {
-					switch(kb_keys[row][col].character) {
-						case '*':
-							cleanScreen(VIAS_8);
-							break;
-						case '#':
-							breakLine(VIAS_8);
-							lcdWriteMessage("Calling....", VIAS_8);
-							break;
-						default:
-							lcdWriteCharacter(kb_keys[row][col].character, VIAS_8);
-					}
-				}
+				character = (row != 0xff ? kb_keys[row][col].character:'\0');
 				col = 2;
 				break;
 			case 2:
 				enableKBCol(col);
 				row = selectedRow(col);
-				if (row != 0xff && kb_keys[row][col].character != '\0') {
-					switch(kb_keys[row][col].character) {
-						case '*':
-							cleanScreen(VIAS_8);
-							break;
-						case '#':
-							breakLine(VIAS_8);
-							lcdWriteMessage("Calling....", VIAS_8);
-							break;
-						default:
-							lcdWriteCharacter(kb_keys[row][col].character, VIAS_8);
-					}
-					
-				}
+				character = (row != 0xff ? kb_keys[row][col].character:'\0');
 				col = 3;
 				break;
 			case 3:
 				enableKBCol(col);
 				row = selectedRow(col);
-				if (row != 0xff&& kb_keys[row][col].character != '\0') {
-					switch(kb_keys[row][col].character) {
-						case '*':
-							cleanScreen(VIAS_8);
-							break;
-						case '#':
-							breakLine(VIAS_8);
-							lcdWriteMessage("Calling....", VIAS_8);
-							break;
-						default:
-							lcdWriteCharacter(kb_keys[row][col].character, VIAS_8);
-					}
-				}
+				character = (row != 0xff ? kb_keys[row][col].character:'\0');
 				col = 0;
 				break;
+		}
+		
+		if(character != '\0') {
+			switch(character) {
+				case '*':
+					cleanScreen(VIAS_DEFAULT);
+					break;
+				case '#':
+					if(msgCounter == 16) {
+						breakLine(VIAS_DEFAULT);
+						lcdWriteMessage("Calling....", VIAS_DEFAULT);
+					} else {
+						breakLine(VIAS_DEFAULT);
+						lcdWriteMessage("*Wrong number*", VIAS_DEFAULT);
+					}
+					HAL_Delay(3000);
+					cleanScreen(VIAS_DEFAULT);
+					msgCounter = 0;
+					break;
+				case 0x01:
+					breakLine(VIAS_DEFAULT);
+					lcdWriteMessage("C: ", VIAS_DEFAULT);
+					cursorCol = number();
+					breakLine(VIAS_DEFAULT);
+					lcdWriteMessage("C: ", VIAS_DEFAULT);
+					lcdWriteCharacter(cursorCol.character, VIAS_DEFAULT);
+					moveCursorTo(1, cursorCol.number, VIAS_DEFAULT);
+					HAL_Delay(1500);
+					dataReceived = lcdReader(VIAS_DEFAULT);
+					breakLine(VIAS_DEFAULT);
+					lcdWriteMessage("C: ", VIAS_DEFAULT);
+					lcdWriteCharacter(cursorCol.character, VIAS_DEFAULT);
+					lcdWriteMessage(" N: ", VIAS_DEFAULT);
+					lcdWriteCharacter(dataReceived, VIAS_DEFAULT);
+					HAL_Delay(1500);
+					cleanScreen(VIAS_DEFAULT);
+					break;
+				default:
+					lcdWriteFormatedNumber(character, VIAS_DEFAULT);
+			}
 		}
 		
   }
@@ -259,25 +267,41 @@ void SystemClock_Config(void)
 
 /* USER CODE BEGIN 4 */
 void lcdInitialization(uint8_t vias) {
-	HAL_Delay(15);
-	lcdSender(0x30, INSTRUCTION, vias);
-	HAL_Delay(5);
-	lcdSender(0x30, INSTRUCTION, vias);
-	lcdSender(0x30, INSTRUCTION, vias);
-	lcdSender(0x38, INSTRUCTION, vias);
-	lcdSender(0x0F, INSTRUCTION, vias);
-	lcdSender(0x06, INSTRUCTION, vias);
-	HAL_Delay(2);
-	lcdSender(0x01, INSTRUCTION, vias);
-	HAL_Delay(2);
-	lcdSender(0x0C, INSTRUCTION, vias);
-	HAL_Delay(2);
+	
+	
+	switch(vias) {
+		case VIAS_8:
+			HAL_Delay(15);
+			lcdSender(0x30, INSTRUCTION, WRITE_MODE, vias);
+			HAL_Delay(5);
+			lcdSender(0x30, INSTRUCTION, WRITE_MODE, vias);
+			lcdSender(0x30, INSTRUCTION, WRITE_MODE, vias);
+			lcdSender(0x38, INSTRUCTION, WRITE_MODE, vias);
+			lcdSender(0x0F, INSTRUCTION, WRITE_MODE, vias);
+			lcdSender(0x06, INSTRUCTION, WRITE_MODE, vias);
+			HAL_Delay(2);
+			lcdSender(0x01, INSTRUCTION, WRITE_MODE, vias);
+			HAL_Delay(2);
+			lcdSender(0x0C, INSTRUCTION, WRITE_MODE, vias);
+			HAL_Delay(2);
+			break;
+		case VIAS_4:
+			HAL_Delay(15);
+			lcdSender(0x33, INSTRUCTION, WRITE_MODE, vias);
+			lcdSender(0x32, INSTRUCTION, WRITE_MODE, vias);
+			lcdSender(0x2F, INSTRUCTION, WRITE_MODE, vias);
+			lcdSender(0x08, INSTRUCTION, WRITE_MODE, vias);
+			lcdSender(0x0C, INSTRUCTION, WRITE_MODE, vias);
+			lcdSender(0x01, INSTRUCTION, WRITE_MODE, vias);
+			HAL_Delay(2);
+			break;
+	}
 	
 }
 
-void lcdSender(uint8_t data, uint8_t mode, uint8_t vias) {
-	HAL_GPIO_WritePin(LCD_RS_GPIO_Port, LCD_RS_Pin, (mode == DATA ? SET:RESET));
-	HAL_GPIO_WritePin(LCD_RW_GPIO_Port, LCD_RW_Pin, WRITE_MODE);
+void lcdSender(uint8_t data, uint8_t rs_mode, uint8_t rw_mode, uint8_t vias) {
+	HAL_GPIO_WritePin(LCD_RS_GPIO_Port, LCD_RS_Pin, (rs_mode == DATA ? SET:RESET));
+	HAL_GPIO_WritePin(LCD_RW_GPIO_Port, LCD_RW_Pin, rw_mode);
 	
 	switch(vias) {
 		case VIAS_8:
@@ -285,11 +309,27 @@ void lcdSender(uint8_t data, uint8_t mode, uint8_t vias) {
 			HAL_GPIO_WritePin(LCD_DB1_GPIO_Port, LCD_DB1_Pin, ((data & 0x02) == 0x02 ? SET:RESET));
 			HAL_GPIO_WritePin(LCD_DB2_GPIO_Port, LCD_DB2_Pin, ((data & 0x04) == 0x04 ? SET:RESET));
 			HAL_GPIO_WritePin(LCD_DB3_GPIO_Port, LCD_DB3_Pin, ((data & 0x08) == 0x08 ? SET:RESET));
+			HAL_GPIO_WritePin(LCD_DB4_GPIO_Port, LCD_DB4_Pin, ((data & 0x10) == 0x10 ? SET:RESET));
+			HAL_GPIO_WritePin(LCD_DB5_GPIO_Port, LCD_DB5_Pin, ((data & 0x20) == 0x20 ? SET:RESET));
+			HAL_GPIO_WritePin(LCD_DB6_GPIO_Port, LCD_DB6_Pin, ((data & 0x40) == 0x40 ? SET:RESET));
+			HAL_GPIO_WritePin(LCD_DB7_GPIO_Port, LCD_DB7_Pin, ((data & 0x80) == 0x80 ? SET:RESET));
+			break;
 		case VIAS_4:
 			HAL_GPIO_WritePin(LCD_DB4_GPIO_Port, LCD_DB4_Pin, ((data & 0x10) == 0x10 ? SET:RESET));
 			HAL_GPIO_WritePin(LCD_DB5_GPIO_Port, LCD_DB5_Pin, ((data & 0x20) == 0x20 ? SET:RESET));
 			HAL_GPIO_WritePin(LCD_DB6_GPIO_Port, LCD_DB6_Pin, ((data & 0x40) == 0x40 ? SET:RESET));
 			HAL_GPIO_WritePin(LCD_DB7_GPIO_Port, LCD_DB7_Pin, ((data & 0x80) == 0x80 ? SET:RESET));
+		
+			HAL_GPIO_WritePin(LCD_E_GPIO_Port, LCD_E_Pin, RESET);
+			HAL_Delay(1);
+			HAL_GPIO_WritePin(LCD_E_GPIO_Port, LCD_E_Pin, SET);
+			HAL_Delay(1);
+			HAL_GPIO_WritePin(LCD_E_GPIO_Port, LCD_E_Pin, RESET);
+		
+			HAL_GPIO_WritePin(LCD_DB4_GPIO_Port, LCD_DB4_Pin, (((data << 4) & 0x10) == 0x10 ? SET:RESET));
+			HAL_GPIO_WritePin(LCD_DB5_GPIO_Port, LCD_DB5_Pin, (((data << 4) & 0x20) == 0x20 ? SET:RESET));
+			HAL_GPIO_WritePin(LCD_DB6_GPIO_Port, LCD_DB6_Pin, (((data << 4) & 0x40) == 0x40 ? SET:RESET));
+			HAL_GPIO_WritePin(LCD_DB7_GPIO_Port, LCD_DB7_Pin, (((data << 4) & 0x80) == 0x80 ? SET:RESET));
 	}
 	
 	HAL_GPIO_WritePin(LCD_E_GPIO_Port, LCD_E_Pin, RESET);
@@ -301,34 +341,59 @@ void lcdSender(uint8_t data, uint8_t mode, uint8_t vias) {
 }
 
 void lcdWriteMessage(char *msg, uint8_t vias) {
-	uint8_t msgCounter = 0;
 	do {
-		switch(msgCounter) {
-			case 16:
-				breakLine(vias);
-				break;
-			case 32:
-				cleanScreen(vias);
-				break;
-			default:
-				msgCounter++;
-		}
 		if (*msg != '\0') {
-			lcdSender(*msg, DATA, vias);
+			lcdSender(*msg, DATA, WRITE_MODE, vias);
+			msgCounter++;
+			switch (msgCounter) {
+				case 16:
+					breakLine(vias);
+					break;
+				case 32:
+					cleanScreen(vias);
+					break;
+			}
 		}
 	} while(*msg++);
 }
 
+void lcdWriteFormatedNumber(char data, uint8_t vias) {
+	
+	switch(msgCounter) {
+		case 0:
+			lcdSender('(', DATA, WRITE_MODE, vias);
+			msgCounter++;
+			break;
+		case 3:
+			lcdSender(')', DATA, WRITE_MODE, vias);
+			msgCounter++;
+			break;
+		case 9:
+			lcdSender('-', DATA, WRITE_MODE, vias);
+			msgCounter++;
+			break;
+	}
+	if (msgCounter < 14) {
+		lcdSender(data, DATA, WRITE_MODE, vias);
+		msgCounter++;
+		if(msgCounter == 14) {
+			msgCounter+=2;
+		}
+	}
+}
+
 void lcdWriteCharacter(char data, uint8_t vias) {
-	lcdSender(data, DATA, vias);
+	lcdSender(data, DATA, WRITE_MODE, vias);
 }
 
 void breakLine(uint8_t vias) {
-	lcdSender(0xC0, INSTRUCTION, vias);
+	lcdSender(0xC0, INSTRUCTION, WRITE_MODE, vias);
+	msgCounter = 16;
 }
 
 void cleanScreen(uint8_t vias) {
-	lcdSender(0x01, INSTRUCTION, vias);
+	lcdSender(0x01, INSTRUCTION, WRITE_MODE, vias);
+	msgCounter = 0;
 }
 
 
@@ -341,42 +406,180 @@ void enableKBCol(uint8_t col) {
 
 uint8_t selectedRow(uint8_t col) {
 	uint8_t row = 0xff;
-	if(HAL_GPIO_ReadPin(KB_ROW1_GPIO_Port, KB_ROW1_Pin) && kb_keys[0][col].pressed == 0) {
+	if(HAL_GPIO_ReadPin(KB_ROW1_GPIO_Port, KB_ROW1_Pin)) {
 		HAL_Delay(100);
 		if(HAL_GPIO_ReadPin(KB_ROW1_GPIO_Port, KB_ROW1_Pin)) {
 			row = 0;
-			kb_keys[row][col].pressed = 1;
 		}
-	} else if(HAL_GPIO_ReadPin(KB_ROW2_GPIO_Port, KB_ROW2_Pin) && kb_keys[1][col].pressed == 0) {
+	} else if(HAL_GPIO_ReadPin(KB_ROW2_GPIO_Port, KB_ROW2_Pin)) {
 		HAL_Delay(100);
 		if(HAL_GPIO_ReadPin(KB_ROW2_GPIO_Port, KB_ROW2_Pin)) {
 			row = 1;
-			kb_keys[row][col].pressed = 1;
 		}
-	} else if(HAL_GPIO_ReadPin(KB_ROW3_GPIO_Port, KB_ROW3_Pin) && kb_keys[2][col].pressed == 0) {
+	} else if(HAL_GPIO_ReadPin(KB_ROW3_GPIO_Port, KB_ROW3_Pin)) {
 		HAL_Delay(100);
 		if(HAL_GPIO_ReadPin(KB_ROW3_GPIO_Port, KB_ROW3_Pin)) {
 			row = 2;
-			kb_keys[row][col].pressed = 1;
 		}
-	} else if(HAL_GPIO_ReadPin(KB_ROW4_GPIO_Port, KB_ROW4_Pin) && kb_keys[3][col].pressed == 0) {
+	} else if(HAL_GPIO_ReadPin(KB_ROW4_GPIO_Port, KB_ROW4_Pin)) {
 		HAL_Delay(100);
 		if(HAL_GPIO_ReadPin(KB_ROW4_GPIO_Port, KB_ROW4_Pin)) {
 			row = 3;
-			kb_keys[row][col].pressed = 1;
 		}
-	}
-	
-	if(row == 0xff) {
-		kb_keys[0][col].pressed = 0;
-		kb_keys[1][col].pressed = 0;
-		kb_keys[2][col].pressed = 0;
-		kb_keys[3][col].pressed = 0;
 	}
 	
 	return row;
 }
+
+void lcdCreateCharacter(uint8_t *arr, uint8_t vias) {
+	uint8_t i = 0;
+	lcdSender(0x40, INSTRUCTION, WRITE_MODE, vias);
+	for(i = 0; i < 7;i++) {
+		lcdSender(arr[i], DATA, WRITE_MODE, vias);
+	}
+	lcdSender(0x00, DATA, WRITE_MODE, vias);
+	lcdSender(0x00, INSTRUCTION, WRITE_MODE, vias);
+}
+
+void turnOutputVias(void) {
+	GPIO_InitTypeDef GPIO_InitStruct = {0};
 	
+	GPIO_InitStruct.Pin = LCD_DB7_Pin|LCD_DB6_Pin|LCD_DB1_Pin|LCD_DB2_Pin|LCD_DB0_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
+
+  GPIO_InitStruct.Pin = LCD_DB3_Pin|LCD_DB4_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+
+  GPIO_InitStruct.Pin = LCD_DB5_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+}
+
+void turnInputVias(void) {
+	GPIO_InitTypeDef GPIO_InitStruct = {0};
+	
+	GPIO_InitStruct.Pin = LCD_DB7_Pin|LCD_DB6_Pin|LCD_DB1_Pin|LCD_DB2_Pin|LCD_DB0_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = GPIO_PULLDOWN;
+  HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
+
+  GPIO_InitStruct.Pin = LCD_DB3_Pin|LCD_DB4_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = GPIO_PULLDOWN;
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+
+  GPIO_InitStruct.Pin = LCD_DB5_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = GPIO_PULLDOWN;
+  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+}
+
+char lcdReader(uint8_t vias) {
+	char data[9];
+	data[8] = 0x00;
+	uint8_t i;
+	
+	turnInputVias();
+	
+	HAL_GPIO_WritePin(LCD_E_GPIO_Port, LCD_E_Pin, RESET);
+	
+	HAL_GPIO_WritePin(LCD_RS_GPIO_Port, LCD_RS_Pin, DATA);
+	HAL_GPIO_WritePin(LCD_RW_GPIO_Port, LCD_RW_Pin, READ_MODE);
+	
+	HAL_Delay(1);
+	HAL_GPIO_WritePin(LCD_E_GPIO_Port, LCD_E_Pin, SET);
+	HAL_Delay(1);
+	
+	switch(vias) {
+		case VIAS_4:
+			break;
+		case VIAS_8:
+			data[0] = (HAL_GPIO_ReadPin(LCD_DB0_GPIO_Port, LCD_DB0_Pin) == 1 ? (0x01 << 0):0x00);
+			data[1] = (HAL_GPIO_ReadPin(LCD_DB1_GPIO_Port, LCD_DB1_Pin) == 1 ? (0x01 << 1):0x00);
+			data[2] = (HAL_GPIO_ReadPin(LCD_DB2_GPIO_Port, LCD_DB2_Pin) == 1 ? (0x01 << 2):0x00);
+			data[3] = (HAL_GPIO_ReadPin(LCD_DB3_GPIO_Port, LCD_DB3_Pin) == 1 ? (0x01 << 3):0x00);
+			data[4] = (HAL_GPIO_ReadPin(LCD_DB4_GPIO_Port, LCD_DB4_Pin) == 1 ? (0x01 << 4):0x00);
+			data[5] = (HAL_GPIO_ReadPin(LCD_DB5_GPIO_Port, LCD_DB5_Pin) == 1 ? (0x01 << 5):0x00);
+			data[6] = (HAL_GPIO_ReadPin(LCD_DB6_GPIO_Port, LCD_DB6_Pin) == 1 ? (0x01 << 6):0x00);
+			data[7] = (HAL_GPIO_ReadPin(LCD_DB7_GPIO_Port, LCD_DB7_Pin) == 1 ? (0x01 << 7):0x00);
+			break;
+	}
+	HAL_GPIO_WritePin(LCD_E_GPIO_Port, LCD_E_Pin, RESET);
+	turnOutputVias();
+
+	for(i = 0; i < 8; i++) {
+		data[8] |= data[i];
+	}
+	
+	return data[8];
+}
+
+void moveCursorTo(uint8_t row, uint8_t col, uint8_t vias) {
+	if(row > 2 || col > 16) {
+		return;
+	}
+	uint8_t cursorPositions[2][16] = {
+		{0x80,0x81,0x82,0x83,0x84,0x85,0x86,0x87,0x88,0x89,0x8a,0x8b,0x8c,0x8d,0x8e,0x8f},
+		{0xc0,0xc1,0xc2,0xc3,0xc4,0xc5,0xc6,0xc7,0xc8,0xc9,0xca,0xcb,0xcc,0xcd,0xce,0xcf}
+	};
+	lcdSender((cursorPositions[row-1][col-1] | 0x80), INSTRUCTION, WRITE_MODE, vias); 
+}
+
+Button number(void) {
+	uint8_t col = 0;
+	uint8_t row;
+	Button number = {'\0',0xff};
+	while (number.number == 0xff) {
+		switch(col) {
+			case 0:
+				enableKBCol(col);
+				row = selectedRow(col);
+				number.number = (row != 0xff ? kb_keys[row][col].number:0xff);
+				if (number.number != 0xff) {
+					number.character = kb_keys[row][col].character;
+				}
+				col = 1;
+				break;
+			case 1:
+				enableKBCol(col);
+				row = selectedRow(col);
+				number.number = (row != 0xff ? kb_keys[row][col].number:0xff);
+				if (number.number != 0xff) {
+					number.character = kb_keys[row][col].character;
+				}
+				col = 2;
+				break;
+			case 2:
+				enableKBCol(col);
+				row = selectedRow(col);
+				number.number = (row != 0xff ? kb_keys[row][col].number:0xff);
+				if (number.number != 0xff) {
+					number.character = kb_keys[row][col].character;
+				}
+				col = 3;
+				break;
+			case 3:
+				enableKBCol(col);
+				row = selectedRow(col);
+				number.number = (row != 0xff ? kb_keys[row][col].number:0xff);
+				if (number.number != 0xff) {
+					number.character = kb_keys[row][col].character;
+				}
+				col = 0;
+				break;
+		}
+	}
+	
+	return number;
+}
 /* USER CODE END 4 */
 
 /**
