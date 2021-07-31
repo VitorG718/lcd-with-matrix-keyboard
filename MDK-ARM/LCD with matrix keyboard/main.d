@@ -31,3 +31,4 @@ lcd with matrix keyboard\main.o: ../Drivers/STM32L0xx_HAL_Driver/Inc/stm32l0xx_h
 lcd with matrix keyboard\main.o: ../Drivers/STM32L0xx_HAL_Driver/Inc/stm32l0xx_hal_uart_ex.h
 lcd with matrix keyboard\main.o: ../Inc/usart.h
 lcd with matrix keyboard\main.o: ../Inc/gpio.h
+lcd with matrix keyboard\main.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\stdio.h

@@ -25,7 +25,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include "stdio.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -34,7 +34,11 @@ typedef struct {
 	char character;
 	uint8_t number;
 } Button;
-uint8_t msgCounter = 0;
+
+typedef struct {
+	char characters[2];
+	uint8_t number;
+} ValueDef;
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
@@ -48,45 +52,96 @@ uint8_t msgCounter = 0;
 #define VIAS_4						0
 #define VIAS_8						1
 #define VIAS_DEFAULT      VIAS_8
+#define LEFT_ARROW				0x00
+#define RIGHT_ARROW				0x01
 
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
 /* USER CODE BEGIN PM */
-
+typedef enum {left, right, both, none}ScreenArrow;
+typedef enum {screen1, screen2, screen3, screen4, screen5, screen6, screen7, wrongPassword, event1, event2, event3, event4, event5, noScreen}Screens;
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
 Button kb_keys[4][4] = {
-	{{'1',1},{'2',2},{'3',3},{0x01,0xff}},
-	{{'4',4},{'5',5},{'6',6},{0x00,0xff}},
-	{{'7',7},{'8',8},{'9',9},{0x00,0xff}},
-	{{'*',0xff},{'0',0},{'#',0xff},{0x00,0xff}}
+	{{'1',1},{'2',2},{'3',3},{'u',0xfe}},
+	{{'4',4},{'5',5},{'6',6},{'d',0xfe}},
+	{{'7',7},{'8',8},{'9',9},{'l',0xfe}},
+	{{'*',0xff},{'0',0},{'#',0xff},{'r',0xfe}}
 };
-uint8_t character = '\0';
-uint8_t shipCharacter [7] = {0x00, 0x0a, 0x1f, 0x1f, 0x0e, 0x04, 0x00};	
+
+uint8_t arrowsCharacter [2][7] = {
+	{0x00, 0x04, 0x08, 0x1f, 0x08, 0x04, 0x00},
+	{0x00, 0x04, 0x02, 0x1f, 0x02, 0x04, 0x00}
+};
+
+char number[10] = {'0','1','2','3','4','5','6','7','8','9'};
+
+ValueDef aqValue [3] = {
+	{{'3','2'}, 32},
+	{{'3','2'}, 32},
+	{{'3','2'}, 32}
+};
+
+ValueDef rsfValue [3] = {
+	{{'1','7'}, 17},
+	{{'1','7'}, 17},
+	{{'1','7'}, 17}
+};
+
+char passwords[3][4] = {
+	{'0','0','0','1'},
+	{'0','0','0','2'},
+	{'0','0','0','3'}
+};
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 /* USER CODE BEGIN PFP */
-void lcdInitialization(uint8_t);
-void lcdSender(uint8_t, uint8_t, uint8_t, uint8_t);
-void lcdWriteMessage(char *, uint8_t);
-void lcdWriteCharacter(char, uint8_t);
-void lcdWriteFormatedNumber(char, uint8_t);
-void breakLine(uint8_t);
-void cleanScreen(uint8_t);
+void lcdInitialization(void);
+void lcdSender(uint8_t, uint8_t, uint8_t);
+void lcdWriteMessage(char *);
+void lcdWriteCharacter(char);
+void lcdWriteFormatedNumber(char);
+void breakLine(void);
+void cleanScreen(void);
 void enableKBCol(uint8_t);
 uint8_t selectedRow(uint8_t);
-void lcdCreateCharacter(uint8_t *, uint8_t);
+void lcdCreateCharacter(uint8_t [2][7]);
 void turnOutputVias(void);
 void turnInputVias(void);
-char lcdReader(uint8_t);
-void moveCursorTo(uint8_t, uint8_t, uint8_t);
-Button number(void);
+char lcdReader(void);
+void moveCursorTo(uint8_t row, uint8_t col);
+Button numberButton(void);
+void createScreen(char *msg1, char *msg2, ScreenArrow arrows) {
+	cleanScreen();
+	lcdWriteMessage(msg1);
+	breakLine();
+	lcdWriteMessage(msg2);
+	
+	switch(arrows) {
+		case left:
+			moveCursorTo(2,1);
+			lcdWriteCharacter(LEFT_ARROW);
+			break;
+		case right:
+			moveCursorTo(2,16);
+			lcdWriteCharacter(RIGHT_ARROW);
+			break;
+		case both:
+			moveCursorTo(2,1);
+			lcdWriteCharacter(LEFT_ARROW);
+			moveCursorTo(2,16);
+			lcdWriteCharacter(RIGHT_ARROW);
+			break;
+		case none:
+			break;
+	}
+}
 
 /* USER CODE END PFP */
 
@@ -125,18 +180,17 @@ int main(void)
   MX_GPIO_Init();
   MX_USART2_UART_Init();
   /* USER CODE BEGIN 2 */
-	lcdInitialization(VIAS_DEFAULT);
-	lcdCreateCharacter(shipCharacter, VIAS_DEFAULT);
-	cleanScreen(VIAS_DEFAULT);
-	lcdWriteMessage("Let's make", VIAS_DEFAULT);
-	breakLine(VIAS_DEFAULT);
-	lcdWriteMessage("a call", VIAS_DEFAULT);
-	HAL_Delay(3000);
-	cleanScreen(VIAS_DEFAULT);
-	uint8_t col = 0;
-	uint8_t row;
-	char dataReceived = 0x01;
-	Button cursorCol;
+	lcdInitialization();
+	lcdCreateCharacter(arrowsCharacter);
+
+	Screens currentScreen = noScreen, nextScreen = screen1;
+	uint8_t profile = 1;
+	char *msg1, *msg2;
+	Button bt;
+	uint8_t passwordChecked;
+	ValueDef aqValueTemp;
+	ValueDef rsfValueTemp;
+	uint8_t i;
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -147,72 +201,315 @@ int main(void)
 
     /* USER CODE BEGIN 3 */
 		
-		switch(col) {
-			case 0:
-				enableKBCol(col);
-				row = selectedRow(col);
-				character = (row != 0xff ? kb_keys[row][col].character:'\0');
-				col = 1;
-				break;
-			case 1:
-				enableKBCol(col);
-				row = selectedRow(col);
-				character = (row != 0xff ? kb_keys[row][col].character:'\0');
-				col = 2;
-				break;
-			case 2:
-				enableKBCol(col);
-				row = selectedRow(col);
-				character = (row != 0xff ? kb_keys[row][col].character:'\0');
-				col = 3;
-				break;
-			case 3:
-				enableKBCol(col);
-				row = selectedRow(col);
-				character = (row != 0xff ? kb_keys[row][col].character:'\0');
-				col = 0;
-				break;
-		}
-		
-		if(character != '\0') {
-			switch(character) {
-				case '*':
-					cleanScreen(VIAS_DEFAULT);
+		if(currentScreen != nextScreen) {
+			currentScreen = nextScreen;
+			switch(currentScreen) {
+				case screen1:
+					createScreen("  TEMPORIZADOR  ", "    PERFIL 1    ", right);
+					profile = 1;
+					do {
+						bt = numberButton();
+						switch(bt.character) {
+							case 'r':
+								nextScreen = screen2;
+								break;
+							case 'd':
+								nextScreen = screen4;
+								break;
+							default:
+								bt.number = 0xff;
+								break;
+						}
+					} while(bt.number != 0xfe);
 					break;
-				case '#':
-					if(msgCounter == 16) {
-						breakLine(VIAS_DEFAULT);
-						lcdWriteMessage("Calling....", VIAS_DEFAULT);
-					} else {
-						breakLine(VIAS_DEFAULT);
-						lcdWriteMessage("*Wrong number*", VIAS_DEFAULT);
+				case screen2:
+					createScreen("  TEMPORIZADOR  ", "    PERFIL 2    ", both);
+					profile = 2;
+					do {
+						bt = numberButton();
+						switch(bt.character) {
+							case 'l':
+								nextScreen = screen1;
+								break;
+							case 'r':
+								nextScreen = screen3;
+								break;
+							case 'd':
+								nextScreen = screen4;
+								break;
+							default:
+								bt.number = 0xff;
+								break;
+						}
+					} while(bt.number != 0xfe);
+					break;
+				case screen3:
+					createScreen("  TEMPORIZADOR  ", "    PERFIL 3    ", left);
+					profile = 3;
+					do {
+						bt = numberButton();
+						switch(bt.character) {
+							case 'l':
+								nextScreen = screen2;
+								break;
+								break;
+							case 'd':
+								nextScreen = screen4;
+								break;
+							default:
+								bt.number = 0xff;
+								break;
+						}
+					} while(bt.number != 0xfe);
+					break;
+				case screen4:
+					msg1 = "    PERFIL X    ";
+					msg2 = "AQ: XXs RSF: XXs";
+					createScreen(msg1, msg2, none);
+					moveCursorTo(1, 12);
+					lcdWriteCharacter(number[profile]);
+					moveCursorTo(2, 5);
+					lcdWriteCharacter(aqValue[profile-1].characters[0]);
+					lcdWriteCharacter(aqValue[profile-1].characters[1]);
+					moveCursorTo(2, 14);
+					lcdWriteCharacter(rsfValue[profile-1].characters[0]);
+					lcdWriteCharacter(rsfValue[profile-1].characters[1]);
+					HAL_Delay(1000);
+					nextScreen = screen5;
+					break;
+				case screen5:
+					msg1 = "    PERFIL X    ";
+					msg2 = "    INICIAR     ";
+					createScreen(msg1, msg2, right);
+					moveCursorTo(1, 12);
+					lcdWriteCharacter(number[profile]);
+					do {
+						bt = numberButton();
+						switch(bt.character) {
+							case 'u':
+								nextScreen = screen1;
+								break;
+							case 'd':
+								nextScreen = screen6;
+								break;
+							case 'r':
+								nextScreen = screen7;
+								break;
+							default:
+								bt.number = 0xff;
+								break;
+						}
+					} while(bt.number != 0xfe);
+					break;
+				case screen6:
+					msg1 = "    PERFIL X    ";
+					msg2 = " INICIAR CICLO  ";
+					createScreen(msg1, msg2, none);
+					moveCursorTo(1, 12);
+					lcdWriteCharacter(number[profile]);
+					do {
+						bt = numberButton();
+						switch(bt.character) {
+							case 'u':
+								nextScreen = screen1;
+								break;
+							// Go to task E
+							default:
+								bt.number = 0xff;
+								break;
+						}
+					} while(bt.number != 0xfe);
+					break;
+				case screen7:
+					msg1 = "    PERFIL X    ";
+					msg2 = "     EDITAR     ";
+					createScreen(msg1, msg2, left);
+					moveCursorTo(1, 12);
+					lcdWriteCharacter(number[profile]);
+					do {
+						bt = numberButton();
+						switch(bt.character) {
+							case 'u':
+								nextScreen = screen1;
+								break;
+							case 'l':
+								nextScreen = screen5;
+								break;
+							case 'd':
+								nextScreen = event1;
+								break;
+							default:
+								bt.number = 0xff;
+								break;
+						}
+					} while(bt.number != 0xfe);
+					break;
+				case wrongPassword:
+					msg1 = "     SENHA      ";
+					msg2 = "   INCORRETA    ";
+					createScreen(msg1, msg2, none);
+					HAL_Delay(1000);
+					nextScreen = screen4;
+					break;
+				case event1:
+					msg1 = "EDITAR PERFIL X ";
+					msg2 = "SENHA:          ";
+					createScreen(msg1, msg2, none);
+					moveCursorTo(1, 15);
+					lcdWriteCharacter(number[profile]);
+					moveCursorTo(2,7);
+				  int8_t counter = 0;
+					char passwordCheck[4];
+					while(counter < 4) {
+						do {
+							bt = numberButton();
+						} while(bt.number == 0xfe || bt.number == 0xff);
+						passwordCheck[counter] = bt.character;
+						lcdWriteCharacter('*');
+						counter++;
 					}
-					HAL_Delay(3000);
-					cleanScreen(VIAS_DEFAULT);
-					msgCounter = 0;
+					passwordChecked = 1;
+					for(counter = 3; counter >= 0; counter--) {
+						if(passwords[profile-1][counter] != passwordCheck[counter]) {
+							passwordChecked = 0;
+							break;
+						}
+					}
+					if(passwordChecked == 0) {
+						nextScreen = wrongPassword;
+					} else {
+						nextScreen = event2;
+					}
 					break;
-				case 0x01:
-					breakLine(VIAS_DEFAULT);
-					lcdWriteMessage("C: ", VIAS_DEFAULT);
-					cursorCol = number();
-					breakLine(VIAS_DEFAULT);
-					lcdWriteMessage("C: ", VIAS_DEFAULT);
-					lcdWriteCharacter(cursorCol.character, VIAS_DEFAULT);
-					moveCursorTo(1, cursorCol.number, VIAS_DEFAULT);
-					HAL_Delay(1500);
-					dataReceived = lcdReader(VIAS_DEFAULT);
-					breakLine(VIAS_DEFAULT);
-					lcdWriteMessage("C: ", VIAS_DEFAULT);
-					lcdWriteCharacter(cursorCol.character, VIAS_DEFAULT);
-					lcdWriteMessage(" N: ", VIAS_DEFAULT);
-					lcdWriteCharacter(dataReceived, VIAS_DEFAULT);
-					HAL_Delay(1500);
-					cleanScreen(VIAS_DEFAULT);
+				case event2:
+					msg1 = "EDITAR PERFIL X ";
+					msg2 = "AQUECIMENTO: XXs";
+					createScreen(msg1, msg2, none);
+					moveCursorTo(1, 15);
+					lcdWriteCharacter(number[profile]);
+					moveCursorTo(2, 14);
+					lcdWriteCharacter(aqValue[profile-1].characters[0]);
+					lcdWriteCharacter(aqValue[profile-1].characters[1]);
+					do {
+						aqValueTemp.number = 0;
+						moveCursorTo(2, 14);
+						lcdWriteMessage("  ");
+						moveCursorTo(2, 14);
+						for(i = 0; i < 2; i++) {
+							do {
+								bt = numberButton();
+							}while(bt.number == 0xfe || bt.number == 0xff);
+							if(i == 0) {
+								aqValueTemp.number += (bt.number * 10);
+							} else {
+								aqValueTemp.number += bt.number;
+							}
+							aqValueTemp.characters[i] = bt.character;
+							lcdWriteCharacter(bt.character);
+						}
+					} while(aqValueTemp.number > 32);
+					
+					do {
+						bt = numberButton();
+						switch(bt.character) {
+							case 'd':
+								nextScreen = event3;
+								break;
+							default:
+								bt.number = 0xff;
+								break;
+						}
+					} while(bt.number != 0xfe);
 					break;
-				default:
-					lcdWriteFormatedNumber(character, VIAS_DEFAULT);
+				case event3:
+					msg1 = "EDITAR PERFIL X ";
+					msg2 = "RESFRIAMENTO:XXs";
+					createScreen(msg1, msg2, none);
+					moveCursorTo(1, 15);
+					lcdWriteCharacter(number[profile]);
+					moveCursorTo(2, 14);
+					lcdWriteCharacter(rsfValue[profile-1].characters[0]);
+					lcdWriteCharacter(rsfValue[profile-1].characters[1]);
+					do {
+						rsfValueTemp.number = 0;
+						moveCursorTo(2, 14);
+						lcdWriteMessage("  ");
+						moveCursorTo(2, 14);
+						for(i = 0; i < 2; i++) {
+							do {
+								bt = numberButton();
+							}while(bt.number == 0xfe || bt.number == 0xff);
+							if(i == 0) {
+								rsfValueTemp.number += (bt.number * 10);
+							} else {
+								rsfValueTemp.number += bt.number;
+							}
+							rsfValueTemp.characters[i] = bt.character;
+							lcdWriteCharacter(bt.character);
+						}
+					} while(rsfValueTemp.number > 17);
+					
+					do {
+						bt = numberButton();
+						switch(bt.character) {
+							case 'd':
+								nextScreen = event4;
+								break;
+							default:
+								bt.number = 0xff;
+								break;
+						}
+					} while(bt.number != 0xfe);
+					break;
+				case event4:
+					msg1 = "SALVAR PERFIL X?";
+					msg2 = "AQ: XXs RSF: XXs";
+					createScreen(msg1, msg2, none);
+					moveCursorTo(1, 15);
+					lcdWriteCharacter(number[profile]);
+					moveCursorTo(2, 5);
+					lcdWriteCharacter(aqValueTemp.characters[0]);
+					lcdWriteCharacter(aqValueTemp.characters[1]);
+					moveCursorTo(2, 14);
+					lcdWriteCharacter(rsfValueTemp.characters[0]);
+					lcdWriteCharacter(rsfValueTemp.characters[1]);
+					do {
+						bt = numberButton();
+						switch(bt.character) {
+							case 'u':
+								nextScreen = screen1;
+								break;
+							case 'd':
+								rsfValue[profile-1].characters[0] = rsfValueTemp.characters[0];
+								rsfValue[profile-1].characters[1] = rsfValueTemp.characters[1];
+								rsfValue[profile-1].number = rsfValueTemp.number;
+							
+								aqValue[profile-1].characters[0] = aqValueTemp.characters[0];
+								aqValue[profile-1].characters[1] = aqValueTemp.characters[1];
+								aqValue[profile-1].number = aqValueTemp.number;
+							
+								nextScreen = event5;
+								break;
+							default:
+								bt.number = 0xff;
+								break;
+						}
+					} while(bt.number != 0xfe);
+					break;
+				case event5:
+					msg1 = " PERFIL X SALVO ";
+					msg2 = "                ";
+					createScreen(msg1, msg2, none);
+					moveCursorTo(1, 9);
+					lcdWriteCharacter(number[profile]);
+					HAL_Delay(1000);
+					nextScreen = screen5;
+					break;
+				case noScreen:
+					break;
 			}
 		}
+		
 		
   }
   /* USER CODE END 3 */
@@ -266,50 +563,49 @@ void SystemClock_Config(void)
 }
 
 /* USER CODE BEGIN 4 */
-void lcdInitialization(uint8_t vias) {
+void lcdInitialization(void) {
 	
-	
-	switch(vias) {
+	switch(VIAS_DEFAULT) {
 		case VIAS_8:
 			HAL_Delay(15);
-			lcdSender(0x30, INSTRUCTION, WRITE_MODE, vias);
+			lcdSender(0x30, INSTRUCTION, WRITE_MODE);
 			HAL_Delay(5);
-			lcdSender(0x30, INSTRUCTION, WRITE_MODE, vias);
-			lcdSender(0x30, INSTRUCTION, WRITE_MODE, vias);
-			lcdSender(0x38, INSTRUCTION, WRITE_MODE, vias);
-			lcdSender(0x0F, INSTRUCTION, WRITE_MODE, vias);
-			lcdSender(0x06, INSTRUCTION, WRITE_MODE, vias);
+			lcdSender(0x30, INSTRUCTION, WRITE_MODE);
+			lcdSender(0x30, INSTRUCTION, WRITE_MODE);
+			lcdSender(0x38, INSTRUCTION, WRITE_MODE);
+			lcdSender(0x0F, INSTRUCTION, WRITE_MODE);
+			lcdSender(0x06, INSTRUCTION, WRITE_MODE);
 			HAL_Delay(2);
-			lcdSender(0x01, INSTRUCTION, WRITE_MODE, vias);
+			lcdSender(0x01, INSTRUCTION, WRITE_MODE);
 			HAL_Delay(2);
-			lcdSender(0x0C, INSTRUCTION, WRITE_MODE, vias);
+			lcdSender(0x0C, INSTRUCTION, WRITE_MODE);
 			HAL_Delay(2);
 			break;
 		case VIAS_4:
 			HAL_Delay(15);
-			lcdSender(0x33, INSTRUCTION, WRITE_MODE, vias);
-			lcdSender(0x32, INSTRUCTION, WRITE_MODE, vias);
-			lcdSender(0x2F, INSTRUCTION, WRITE_MODE, vias);
-			lcdSender(0x08, INSTRUCTION, WRITE_MODE, vias);
-			lcdSender(0x0C, INSTRUCTION, WRITE_MODE, vias);
-			lcdSender(0x01, INSTRUCTION, WRITE_MODE, vias);
+			lcdSender(0x33, INSTRUCTION, WRITE_MODE);
+			lcdSender(0x32, INSTRUCTION, WRITE_MODE);
+			lcdSender(0x2F, INSTRUCTION, WRITE_MODE);
+			lcdSender(0x08, INSTRUCTION, WRITE_MODE);
+			lcdSender(0x0C, INSTRUCTION, WRITE_MODE);
+			lcdSender(0x01, INSTRUCTION, WRITE_MODE);
 			HAL_Delay(2);
 			break;
 	}
 	
 }
 
-void lcdSender(uint8_t data, uint8_t rs_mode, uint8_t rw_mode, uint8_t vias) {
+void lcdSender(uint8_t data, uint8_t rs_mode, uint8_t rw_mode) {
 	HAL_GPIO_WritePin(LCD_RS_GPIO_Port, LCD_RS_Pin, (rs_mode == DATA ? SET:RESET));
 	HAL_GPIO_WritePin(LCD_RW_GPIO_Port, LCD_RW_Pin, rw_mode);
 	
-	switch(vias) {
+	switch(VIAS_DEFAULT) {
 		case VIAS_8:
 			HAL_GPIO_WritePin(LCD_DB0_GPIO_Port, LCD_DB0_Pin, ((data & 0x01) == 0x01 ? SET:RESET));
 			HAL_GPIO_WritePin(LCD_DB1_GPIO_Port, LCD_DB1_Pin, ((data & 0x02) == 0x02 ? SET:RESET));
 			HAL_GPIO_WritePin(LCD_DB2_GPIO_Port, LCD_DB2_Pin, ((data & 0x04) == 0x04 ? SET:RESET));
 			HAL_GPIO_WritePin(LCD_DB3_GPIO_Port, LCD_DB3_Pin, ((data & 0x08) == 0x08 ? SET:RESET));
-			HAL_GPIO_WritePin(LCD_DB4_GPIO_Port, LCD_DB4_Pin, ((data & 0x10) == 0x10 ? SET:RESET));
+			HAL_GPIO_WritePin(GPIOA, GPIO_PIN_4, ((data & 0x10) == 0x10 ? SET:RESET));
 			HAL_GPIO_WritePin(LCD_DB5_GPIO_Port, LCD_DB5_Pin, ((data & 0x20) == 0x20 ? SET:RESET));
 			HAL_GPIO_WritePin(LCD_DB6_GPIO_Port, LCD_DB6_Pin, ((data & 0x40) == 0x40 ? SET:RESET));
 			HAL_GPIO_WritePin(LCD_DB7_GPIO_Port, LCD_DB7_Pin, ((data & 0x80) == 0x80 ? SET:RESET));
@@ -340,62 +636,23 @@ void lcdSender(uint8_t data, uint8_t rs_mode, uint8_t rw_mode, uint8_t vias) {
 	
 }
 
-void lcdWriteMessage(char *msg, uint8_t vias) {
+void lcdWriteMessage(char *msg) {
 	do {
-		if (*msg != '\0') {
-			lcdSender(*msg, DATA, WRITE_MODE, vias);
-			msgCounter++;
-			switch (msgCounter) {
-				case 16:
-					breakLine(vias);
-					break;
-				case 32:
-					cleanScreen(vias);
-					break;
-			}
-		}
-	} while(*msg++);
+			lcdSender(*msg, DATA, WRITE_MODE);
+	} while(*msg++ && *msg != '\0');
 }
 
-void lcdWriteFormatedNumber(char data, uint8_t vias) {
-	
-	switch(msgCounter) {
-		case 0:
-			lcdSender('(', DATA, WRITE_MODE, vias);
-			msgCounter++;
-			break;
-		case 3:
-			lcdSender(')', DATA, WRITE_MODE, vias);
-			msgCounter++;
-			break;
-		case 9:
-			lcdSender('-', DATA, WRITE_MODE, vias);
-			msgCounter++;
-			break;
-	}
-	if (msgCounter < 14) {
-		lcdSender(data, DATA, WRITE_MODE, vias);
-		msgCounter++;
-		if(msgCounter == 14) {
-			msgCounter+=2;
-		}
-	}
+void lcdWriteCharacter(char data) {
+	lcdSender(data, DATA, WRITE_MODE);
 }
 
-void lcdWriteCharacter(char data, uint8_t vias) {
-	lcdSender(data, DATA, WRITE_MODE, vias);
+void breakLine(void) {
+	lcdSender(0xC0, INSTRUCTION, WRITE_MODE);
 }
 
-void breakLine(uint8_t vias) {
-	lcdSender(0xC0, INSTRUCTION, WRITE_MODE, vias);
-	msgCounter = 16;
+void cleanScreen(void) {
+	lcdSender(0x01, INSTRUCTION, WRITE_MODE);
 }
-
-void cleanScreen(uint8_t vias) {
-	lcdSender(0x01, INSTRUCTION, WRITE_MODE, vias);
-	msgCounter = 0;
-}
-
 
 void enableKBCol(uint8_t col) {
 	HAL_GPIO_WritePin(KB_COL1_GPIO_Port, KB_COL1_Pin, (col == 0 ? GPIO_PIN_SET:GPIO_PIN_RESET));
@@ -431,14 +688,18 @@ uint8_t selectedRow(uint8_t col) {
 	return row;
 }
 
-void lcdCreateCharacter(uint8_t *arr, uint8_t vias) {
+void lcdCreateCharacter(uint8_t arr[2][7]) {
 	uint8_t i = 0;
-	lcdSender(0x40, INSTRUCTION, WRITE_MODE, vias);
+	lcdSender(0x40, INSTRUCTION, WRITE_MODE);
 	for(i = 0; i < 7;i++) {
-		lcdSender(arr[i], DATA, WRITE_MODE, vias);
+		lcdSender(arr[0][i], DATA, WRITE_MODE);
 	}
-	lcdSender(0x00, DATA, WRITE_MODE, vias);
-	lcdSender(0x00, INSTRUCTION, WRITE_MODE, vias);
+	lcdSender(0x00, DATA, WRITE_MODE);
+	for(i = 0; i < 7;i++) {
+		lcdSender(arr[1][i], DATA, WRITE_MODE);
+	}
+	lcdSender(0x00, DATA, WRITE_MODE);
+	lcdSender(0x00, INSTRUCTION, WRITE_MODE);
 }
 
 void turnOutputVias(void) {
@@ -482,7 +743,7 @@ void turnInputVias(void) {
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 }
 
-char lcdReader(uint8_t vias) {
+char lcdReader() {
 	char data[9];
 	data[8] = 0x00;
 	uint8_t i;
@@ -498,7 +759,7 @@ char lcdReader(uint8_t vias) {
 	HAL_GPIO_WritePin(LCD_E_GPIO_Port, LCD_E_Pin, SET);
 	HAL_Delay(1);
 	
-	switch(vias) {
+	switch(VIAS_DEFAULT) {
 		case VIAS_4:
 			break;
 		case VIAS_8:
@@ -522,7 +783,7 @@ char lcdReader(uint8_t vias) {
 	return data[8];
 }
 
-void moveCursorTo(uint8_t row, uint8_t col, uint8_t vias) {
+void moveCursorTo(uint8_t row, uint8_t col) {
 	if(row > 2 || col > 16) {
 		return;
 	}
@@ -530,10 +791,10 @@ void moveCursorTo(uint8_t row, uint8_t col, uint8_t vias) {
 		{0x80,0x81,0x82,0x83,0x84,0x85,0x86,0x87,0x88,0x89,0x8a,0x8b,0x8c,0x8d,0x8e,0x8f},
 		{0xc0,0xc1,0xc2,0xc3,0xc4,0xc5,0xc6,0xc7,0xc8,0xc9,0xca,0xcb,0xcc,0xcd,0xce,0xcf}
 	};
-	lcdSender((cursorPositions[row-1][col-1] | 0x80), INSTRUCTION, WRITE_MODE, vias); 
+	lcdSender((cursorPositions[row-1][col-1] | 0x80), INSTRUCTION, WRITE_MODE); 
 }
 
-Button number(void) {
+Button numberButton(void) {
 	uint8_t col = 0;
 	uint8_t row;
 	Button number = {'\0',0xff};
@@ -580,6 +841,7 @@ Button number(void) {
 	
 	return number;
 }
+
 /* USER CODE END 4 */
 
 /**
